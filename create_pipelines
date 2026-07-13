@@ -1,0 +1,133 @@
+**3. scripts/create_pipelines.py**
+```python
+"""
+Créer et déployer les pipelines ADF
+"""
+
+import json
+import logging
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.datafactory import DataFactoryManagementClient
+from azure.mgmt.datafactory.models import *
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class AzureDataFactoryManager:
+    """Gestionnaire Azure Data Factory"""
+    
+    def __init__(self, subscription_id, resource_group, factory_name):
+        self.subscription_id = subscription_id
+        self.resource_group = resource_group
+        self.factory_name = factory_name
+        
+        credential = DefaultAzureCredential()
+        self.client = DataFactoryManagementClient(credential, subscription_id)
+    
+    def create_linked_service(self, linked_service_name, properties):
+        """Créer un service lié"""
+        try:
+            logger.info(f"📌 Création du service lié: {linked_service_name}")
+            
+            linked_service = LinkedServiceResource(properties=properties)
+            
+            self.client.linked_services.create_or_update(
+                self.resource_group,
+                self.factory_name,
+                linked_service_name,
+                linked_service
+            )
+            
+            logger.info(f"✅ Service lié créé: {linked_service_name}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur: {str(e)}")
+            raise
+    
+    def create_pipeline(self, pipeline_name, pipeline_activities):
+        """Créer un pipeline"""
+        try:
+            logger.info(f"🔄 Création du pipeline: {pipeline_name}")
+            
+            pipeline = PipelineResource(
+                activities=pipeline_activities
+            )
+            
+            self.client.pipelines.create_or_update(
+                self.resource_group,
+                self.factory_name,
+                pipeline_name,
+                pipeline
+            )
+            
+            logger.info(f"✅ Pipeline créé: {pipeline_name}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur: {str(e)}")
+            raise
+    
+    def monitor_pipeline_run(self, run_id):
+        """Monitorer l'exécution du pipeline"""
+        logger.info(f"👀 Monitoring du pipeline: {run_id}")
+        
+        run = self.client.pipeline_runs.get(
+            self.resource_group,
+            self.factory_name,
+            run_id
+        )
+        
+        status = {
+            "run_id": run.run_id,
+            "status": run.status,
+            "start_time": run.run_start,
+            "end_time": run.run_end,
+            "duration": (run.run_end - run.run_start).total_seconds() if run.run_end else None
+        }
+        
+        logger.info(f"Status: {status['status']}")
+        logger.info(f"Duration: {status['duration']}s")
+        
+        return status
+
+
+def create_customer_pipeline():
+    """Template de pipeline client"""
+    return [
+        CopyActivity(
+            name="CopyCustomerData",
+            inputs=[DatasetReference(reference_name="CustomerSource")],
+            outputs=[DatasetReference(reference_name="CustomerStaging")],
+            source=SqlSource(query="SELECT * FROM customers"),
+            sink=SqlSink(table_name="staging_customers")
+        ),
+        DataFlowActivity(
+            name="TransformCustomerData",
+            data_flow=DataFlowReference(reference_name="CustomerTransformation"),
+            compute=ExecuteDataFlowActivity(compute_type="General")
+        ),
+        CopyActivity(
+            name="CopyToDataWarehouse",
+            inputs=[DatasetReference(reference_name="CustomerStaging")],
+            outputs=[DatasetReference(reference_name="CustomerDW")],
+            source=SqlSource(),
+            sink=SqlSink()
+        )
+    ]
+
+
+if __name__ == "__main__":
+    import os
+    
+    SUBSCRIPTION_ID = os.getenv("SUBSCRIPTION_ID")
+    RESOURCE_GROUP = "data-rg"
+    FACTORY_NAME = "data-factory-prod"
+    
+    manager = AzureDataFactoryManager(
+        SUBSCRIPTION_ID,
+        RESOURCE_GROUP,
+        FACTORY_NAME
+    )
+    
+    # Créer les pipelines
+    manager.create_pipeline("CustomerPipeline", create_customer_pipeline())
+    logger.info("\n✅ Tous les pipelines ont été créés avec succès")
