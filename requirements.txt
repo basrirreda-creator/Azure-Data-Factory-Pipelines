@@ -1,0 +1,9 @@
+azure-datafactory==1.0.0
+azure-identity==1.14.0
+azure-storage-blob==12.19.0
+sqlalchemy==2.0.23
+pyodbc==5.0.1
+pandas==2.1.4
+pydantic==2.5.2
+python-dotenv==1.0.0
+requests==2.31.0
